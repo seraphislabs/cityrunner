@@ -15,9 +15,10 @@ jobs:
 
     - name: Setup SSH with Passphrase
       run: |
-        echo "${{ secrets.SSH_PASSPHRASE }}" | ssh-keygen -P "${{ secrets.SSH_PASSPHRASE }}" -y
-        eval $(ssh-agent -s)
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
+        eval $(ssh-agent -s)  # Start the SSH agent
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add - <<< "${{ secrets.SSH_PASSPHRASE }}"  # Add the SSH private key with the passphrase
+        mkdir -p ~/.ssh  # Ensure the .ssh directory exists
+        echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config  # Disable strict host key checking
       shell: bash
 
     - name: Copy files to server
