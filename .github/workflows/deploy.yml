@@ -13,11 +13,12 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Setup SSH
-      uses: webfactory/ssh-agent@v0.5.3
-      with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-        passphrase: ${{ secrets.SSH_PASSPHRASE }}
+    - name: Setup SSH with Passphrase
+      run: |
+        echo "${{ secrets.SSH_PASSPHRASE }}" | ssh-keygen -P "${{ secrets.SSH_PASSPHRASE }}" -y
+        eval $(ssh-agent -s)
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' | ssh-add -
+      shell: bash
 
     - name: Copy files to server
       run: |
