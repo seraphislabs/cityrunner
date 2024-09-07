@@ -13,16 +13,10 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Setup SSH with Passphrase
-      run: |
-        eval $(ssh-agent -s)  # Start the SSH agent
-        mkdir -p ~/.ssh  # Ensure the .ssh directory exists
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/temp_key  # Write private key to a temp file
-        chmod 600 ~/.ssh/temp_key  # Ensure the private key has the correct permissions
-        echo "${{ secrets.SSH_PASSPHRASE }}" | ssh-add ~/.ssh/temp_key  # Add the private key with passphrase
-        rm ~/.ssh/temp_key  # Clean up by removing the temp file
-        echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config  # Disable strict host key checking
-      shell: bash
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.5.3
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
     - name: Copy files to server
       run: |
