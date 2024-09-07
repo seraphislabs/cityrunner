@@ -20,4 +20,4 @@ jobs:
 
     - name: Copy files to server
       run: |
-        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./Assets/Scripts/Server/ seraphis@67.205.148.170:/srv/cityrunnerserver/
+        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" C:\Projects\CityRunner\Assets\Scripts\Server seraphis@67.205.148.170:/srv/cityrunnerserver/
