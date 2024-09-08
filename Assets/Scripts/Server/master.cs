@@ -275,6 +275,12 @@ public class EventDrivenSocketServer
             }
             else
             {
+                if (!client.handshakeCompleted)
+                {
+                    clients.TryRemove(client.Id, out _);
+                    client.Close();
+                    availableIds.Enqueue(client.Id); // Reuse ID
+                }
                 RpcResponse unknownCommandResponse = new RpcResponse
                 {
                     Result = null,
