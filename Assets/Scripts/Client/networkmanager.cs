@@ -76,11 +76,25 @@ public class NetworkSocketManager
             string receivedData = Encoding.ASCII.GetString(e.Buffer, e.Offset, e.BytesTransferred);
             Debug.Log($"Received from server: {receivedData}");
 
-            // Deserialize the JSON response into an RpcResponse object using Newtonsoft.Json
-            var rpcResponse = JsonConvert.DeserializeObject<RpcResponse>(receivedData);
+            try
+            {
+                // Deserialize the JSON response into an RpcResponse object using Newtonsoft.Json
+                var rpcResponse = JsonConvert.DeserializeObject<RpcResponse>(receivedData);
 
-            // Invoke the OnMessageReceived event
-            OnMessageReceived?.Invoke(rpcResponse);
+                if (rpcResponse != null)
+                {
+                    // Invoke the OnMessageReceived event with the RpcResponse
+                    OnMessageReceived?.Invoke(rpcResponse);
+                }
+                else
+                {
+                    Debug.LogError("Received empty or invalid RPC response.");
+                }
+            }
+            catch (JsonException ex)
+            {
+                Debug.LogError($"Error deserializing RPC response: {ex.Message}");
+            }
 
             // Continue receiving data
             StartReceive();

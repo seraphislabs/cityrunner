@@ -204,23 +204,30 @@ public class EventDrivenSocketServer
 
                 if (!string.IsNullOrEmpty(auth))
                 {
-                    // Create the response and include client information like IP, ID, and SessionId
-                    var response = new
+                    // Create the RpcResponse and include client information like IP, ID, and SessionId
+                    RpcResponse response = new RpcResponse
                     {
-                        Result = $"Hello, {auth}! Your ID is {client.Id}, your IP is {client.ipAddress}, and your session ID is {client.SessionId}.",
-                        Error = (string)null  // No error
+                        Result = $"You have connected with auth: {auth}, Your ID is {client.Id}, your IP is {client.ipAddress}, and your session ID is {client.SessionId}.",
+                        Error = null,  // No error
+                        Parameters = new
+                        {
+                            ClientId = client.Id,
+                            IpAddress = client.ipAddress,
+                            SessionId = client.SessionId
+                        }
                     };
 
-                    // Serialize the response back to JSON
+                    // Serialize the RpcResponse back to JSON
                     return JsonConvert.SerializeObject(response);
                 }
                 else
                 {
-                    // If the auth parameter is missing or empty
-                    var errorResponse = new
+                    // If the auth parameter is missing or empty, return an error response
+                    RpcResponse errorResponse = new RpcResponse
                     {
-                        Result = (string)null,
-                        Error = "Missing 'auth' parameter in 'greet' command"
+                        Result = null,
+                        Error = "Missing 'auth' parameter in 'greet' command",
+                        Parameters = null
                     };
 
                     return JsonConvert.SerializeObject(errorResponse);
@@ -228,11 +235,12 @@ public class EventDrivenSocketServer
             }
             else
             {
-                // Handle unknown commands
-                var unknownCommandResponse = new
+                // Handle unknown commands with an error response
+                RpcResponse unknownCommandResponse = new RpcResponse
                 {
-                    Result = (string)null,
-                    Error = $"Unknown command: {command}"
+                    Result = null,
+                    Error = $"Unknown command: {command}",
+                    Parameters = null
                 };
 
                 return JsonConvert.SerializeObject(unknownCommandResponse);
@@ -240,11 +248,12 @@ public class EventDrivenSocketServer
         }
         catch (JsonException ex)
         {
-            // Handle JSON parsing errors
-            var errorResponse = new
+            // Handle JSON parsing errors and return an error response
+            RpcResponse errorResponse = new RpcResponse
             {
-                Result = (string)null,
-                Error = $"Invalid JSON format: {ex.Message}"
+                Result = null,
+                Error = $"Invalid JSON format: {ex.Message}",
+                Parameters = null
             };
 
             return JsonConvert.SerializeObject(errorResponse);
