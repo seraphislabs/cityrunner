@@ -3,157 +3,174 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Collections.Generic;
-using System.Threading.Tasks;
-using Newtonsoft.Json; // Using Newtonsoft.Json
+using System.Threading;
 
 public class Client
 {
     public int Id { get; set; }
-    public TcpClient TcpClient { get; set; }
-    public NetworkStream Stream { get; set; }
+    public Socket Socket { get; set; }
+    public byte[] Buffer { get; set; } = new byte[1024];
     public bool IsConnected { get; set; }
 
-    public Client(int id, TcpClient tcpClient)
+    public Client(int id, Socket socket)
     {
         Id = id;
-        TcpClient = tcpClient;
-        Stream = tcpClient.GetStream();
+        Socket = socket;
         IsConnected = true;
     }
 
     public void Close()
     {
         IsConnected = false;
-        Stream.Close();
-        TcpClient.Close();
+        Socket.Shutdown(SocketShutdown.Both);
+        Socket.Close();
     }
 }
 
-public class AsyncNetworkSocketServer
+public class EventDrivenSocketServer
 {
-    private TcpListener server;
+    private Socket serverSocket;
     private bool isRunning;
     private List<Client> clients = new List<Client>(); // List to store connected clients
     private int clientIdCounter = 0; // To assign unique IDs to each client
 
-    public AsyncNetworkSocketServer(string ipAddress, int port)
+    public EventDrivenSocketServer(string ipAddress, int port)
     {
-        // Initialize the TCP listener with the given IP address and port
-        server = new TcpListener(IPAddress.Parse(ipAddress), port);
+        serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        serverSocket.Bind(new IPEndPoint(IPAddress.Parse(ipAddress), port));
+        serverSocket.Listen(100); // Backlog of 100
     }
 
-    public async Task StartAsync()
+    public void Start()
     {
         isRunning = true;
-        server.Start();
         Console.WriteLine("Server started, waiting for connections...");
 
-        // Continuously accept incoming connections asynchronously
-        while (isRunning)
+        // Start accepting clients asynchronously
+        StartAccept(null);
+    }
+
+    private void StartAccept(SocketAsyncEventArgs acceptEventArg)
+    {
+        if (acceptEventArg == null)
         {
-            try
-            {
-                // Accept a new client connection asynchronously
-                TcpClient tcpClient = await server.AcceptTcpClientAsync();
-                Console.WriteLine("Client connected!");
+            acceptEventArg = new SocketAsyncEventArgs();
+            acceptEventArg.Completed += OnAcceptCompleted;
+        }
+        else
+        {
+            acceptEventArg.AcceptSocket = null;
+        }
 
-                // Assign a unique ID to the client and add it to the client list
-                Client client = new Client(clientIdCounter++, tcpClient);
-                clients.Add(client);
-                Console.WriteLine($"Client {client.Id} added. With IP: {tcpClient.Client.RemoteEndPoint}");
-
-                // Handle the client connection asynchronously
-                _ = HandleClientAsync(client);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Error: {e.Message}");
-            }
+        bool willRaiseEvent = serverSocket.AcceptAsync(acceptEventArg);
+        if (!willRaiseEvent)
+        {
+            ProcessAccept(acceptEventArg);
         }
     }
 
-    private async Task HandleClientAsync(Client client)
+    private void OnAcceptCompleted(object sender, SocketAsyncEventArgs e)
     {
-        byte[] buffer = new byte[1024];
+        ProcessAccept(e);
+    }
 
-        try
+    private void ProcessAccept(SocketAsyncEventArgs e)
+    {
+        Console.WriteLine("Client connected!");
+
+        // Assign a unique ID to the client and add it to the client list
+        Client client = new Client(clientIdCounter++, e.AcceptSocket);
+        clients.Add(client);
+        Console.WriteLine($"Client {client.Id} added. With IP: {client.Socket.RemoteEndPoint}");
+
+        // Start receiving data from the client
+        StartReceive(client);
+
+        // Accept the next client
+        StartAccept(e);
+    }
+
+    private void StartReceive(Client client)
+    {
+        SocketAsyncEventArgs receiveEventArgs = new SocketAsyncEventArgs();
+        receiveEventArgs.SetBuffer(client.Buffer, 0, client.Buffer.Length);
+        receiveEventArgs.UserToken = client;
+        receiveEventArgs.Completed += OnReceiveCompleted;
+
+        bool willRaiseEvent = client.Socket.ReceiveAsync(receiveEventArgs);
+        if (!willRaiseEvent)
         {
-            while (client.IsConnected)
-            {
-                // Check for incoming data
-                int bytesRead = await client.Stream.ReadAsync(buffer, 0, buffer.Length);
-                if (bytesRead == 0)
-                {
-                    Console.WriteLine($"Client {client.Id} disconnected.");
-                    break; // Client has disconnected
-                }
-
-                // Parse the incoming message (assuming JSON format)
-                string receivedData = Encoding.ASCII.GetString(buffer, 0, bytesRead);
-                Console.WriteLine($"Received from Client {client.Id}: {receivedData}");
-
-                // Process the command and get the response
-                string response = ProcessRpcCommand(receivedData);
-
-                // Send response back to the client
-                byte[] responseData = Encoding.ASCII.GetBytes(response);
-                await client.Stream.WriteAsync(responseData, 0, responseData.Length);
-            }
+            ProcessReceive(receiveEventArgs);
         }
-        catch (Exception e)
+    }
+
+    private void OnReceiveCompleted(object sender, SocketAsyncEventArgs e)
+    {
+        ProcessReceive(e);
+    }
+
+    private void ProcessReceive(SocketAsyncEventArgs e)
+    {
+        Client client = e.UserToken as Client;
+
+        if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
         {
-            Console.WriteLine($"Error handling client {client.Id}: {e.Message}");
+            string receivedData = Encoding.ASCII.GetString(e.Buffer, e.Offset, e.BytesTransferred);
+            Console.WriteLine($"Received from Client {client.Id}: {receivedData}");
+
+            // Process the command and get the response
+            string response = ProcessRpcCommand(receivedData);
+
+            // Send response back to the client
+            StartSend(client, response);
         }
-        finally
+        else
         {
-            // Close the client connection and remove from list
+            Console.WriteLine($"Client {client.Id} disconnected.");
             client.Close();
             clients.Remove(client);
-            Console.WriteLine($"Client {client.Id} removed.");
+        }
+    }
+
+    private void StartSend(Client client, string data)
+    {
+        byte[] byteData = Encoding.ASCII.GetBytes(data);
+        SocketAsyncEventArgs sendEventArgs = new SocketAsyncEventArgs();
+        sendEventArgs.SetBuffer(byteData, 0, byteData.Length);
+        sendEventArgs.UserToken = client;
+        sendEventArgs.Completed += OnSendCompleted;
+
+        bool willRaiseEvent = client.Socket.SendAsync(sendEventArgs);
+        if (!willRaiseEvent)
+        {
+            ProcessSend(sendEventArgs);
+        }
+    }
+
+    private void OnSendCompleted(object sender, SocketAsyncEventArgs e)
+    {
+        ProcessSend(e);
+    }
+
+    private void ProcessSend(SocketAsyncEventArgs e)
+    {
+        Client client = e.UserToken as Client;
+
+        if (e.SocketError == SocketError.Success)
+        {
+            // Start receiving data from the client again
+            StartReceive(client);
+        }
+        else
+        {
+            Console.WriteLine($"Error sending data to Client {client.Id}: {e.SocketError}");
         }
     }
 
     private string ProcessRpcCommand(string jsonData)
     {
-        try
-        {
-            // Deserialize the incoming JSON data into an RpcRequest object using Newtonsoft.Json
-            var rpcRequest = JsonConvert.DeserializeObject<RpcRequest>(jsonData);
-
-            switch (rpcRequest.Command.ToLower())
-            {
-                case "add":
-                    // Get the parameters for the "add" command using Newtonsoft.Json
-                    var addParams = JsonConvert.DeserializeObject<Dictionary<string, int>>(rpcRequest.Parameters.ToString());
-                    int a = addParams["a"];
-                    int b = addParams["b"];
-                    int sum = a + b;
-                    return JsonConvert.SerializeObject(new { result = sum });
-
-                case "greet":
-                    // Get the name for the "greet" command using Newtonsoft.Json
-                    var greetParams = JsonConvert.DeserializeObject<Dictionary<string, string>>(rpcRequest.Parameters.ToString());
-                    string name = greetParams["name"];
-                    return JsonConvert.SerializeObject(new { message = $"Hello, {name}!" });
-
-                default:
-                    return JsonConvert.SerializeObject(new { error = "Unknown command" });
-            }
-        }
-        catch (Exception e)
-        {
-            return JsonConvert.SerializeObject(new { error = "Invalid request", details = e.Message });
-        }
-    }
-
-    // Optional: Method to show the status of all connected clients
-    public void ShowClientStatus()
-    {
-        Console.WriteLine("Connected Clients:");
-        foreach (var client in clients)
-        {
-            Console.WriteLine($"Client {client.Id}: Connected = {client.IsConnected}");
-        }
+        // Simulate processing a command (replace with actual JSON parsing and command handling)
+        return $"Echo: {jsonData}";
     }
 
     public void Stop()
@@ -163,24 +180,31 @@ public class AsyncNetworkSocketServer
         {
             client.Close(); // Close all client connections when stopping the server
         }
-        server.Stop();
+        serverSocket.Close();
         Console.WriteLine("Server stopped.");
+    }
+
+    public void ShowClientStatus()
+    {
+        Console.WriteLine("Connected Clients:");
+        foreach (var client in clients)
+        {
+            Console.WriteLine($"Client {client.Id}: Connected = {client.IsConnected}");
+        }
     }
 }
 
 // Program entry point
 public class TcpServer
 {
-    public static async Task Main(string[] args)
+    public static void Main(string[] args)
     {
-        // Create and start the server
-        AsyncNetworkSocketServer server = new AsyncNetworkSocketServer("0.0.0.0", 5000);
-        await server.StartAsync(); // Await the server's asynchronous start
+        EventDrivenSocketServer server = new EventDrivenSocketServer("0.0.0.0", 5000);
+        server.Start();
 
-        // Wait for the user to stop the server or display client status
         Console.WriteLine("Press ENTER to show connected clients or type 'stop' to stop the server...");
         string input;
-        while ((input = await Console.In.ReadLineAsync()) != "stop") // Use ReadLineAsync to avoid blocking
+        while ((input = Console.ReadLine()) != "stop")
         {
             if (string.IsNullOrEmpty(input))
             {

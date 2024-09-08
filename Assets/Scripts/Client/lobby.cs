@@ -1,9 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -21,17 +16,13 @@ public class Lobby : MonoBehaviour
             dispatcherObj.AddComponent<MainThreadDispatcher>();
         }
 
-        // Initialize the UI element (messageLabel) from the UI Document
-        var rootVisualElement = GetComponent<UIDocument>().rootVisualElement;
-        messageLabel = rootVisualElement.Q<Label>("MessageLabel");
-
         // Initialize the network socket manager
         try
         {
             networkSocketManager = new NetworkSocketManager("67.205.148.170", 5000);
 
-            // Start receiving messages
-            networkSocketManager.StartReceiving(OnMessageReceived);
+            // Subscribe to the OnMessageReceived event
+            networkSocketManager.OnMessageReceived += OnMessageReceived;
 
             // Example: Send an RPC request when the game starts
             var rpcRequest = new RpcRequest
@@ -81,7 +72,7 @@ public class Lobby : MonoBehaviour
 
     void Update()
     {
-        // Optional: You can send more messages to the server here
+        // Optional: You can send more messages to the server here (e.g., when pressing the space key)
         if (Input.GetKeyDown(KeyCode.Space))
         {
             var rpcRequest = new RpcRequest
@@ -99,7 +90,7 @@ public class Lobby : MonoBehaviour
         // Stop the network manager when the application quits
         if (networkSocketManager != null)
         {
-            networkSocketManager.Stop();
+            networkSocketManager.CloseConnection();
         }
     }
 }

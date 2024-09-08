@@ -4,7 +4,6 @@ using System.Net.Sockets;
 using System.Text;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using System.Text.Json;
 
 public class RpcRequest
 {

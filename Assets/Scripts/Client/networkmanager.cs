@@ -1,19 +1,25 @@
 using System;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
 using UnityEngine;
 using Newtonsoft.Json;
 
-public class NetworkSocketManager : MonoBehaviour
+public class NetworkSocketManager
 {
     private string ServerIp;
     private int Port;
 
-    private TcpClient client;
-    private NetworkStream stream;
+    private Socket clientSocket;
     private bool isRunning;
 
+    private byte[] receiveBuffer = new byte[1024]; // Buffer for receiving data
+    private SocketAsyncEventArgs sendEventArgs;    // Event args for sending data
+    private SocketAsyncEventArgs receiveEventArgs; // Event args for receiving data
+
+    public event Action<RpcResponse> OnMessageReceived; // Event for handling received messages
+
+    // Constructor to initialize the NetworkSocketManager with server IP and port
     public NetworkSocketManager(string serverIp, int port)
     {
         ServerIp = serverIp;
@@ -21,9 +27,17 @@ public class NetworkSocketManager : MonoBehaviour
 
         try
         {
-            client = new TcpClient(ServerIp, Port);
-            stream = client.GetStream();
+            clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            clientSocket.Connect(new IPEndPoint(IPAddress.Parse(ServerIp), Port));
             Debug.Log("Connected to the server successfully.");
+
+            // Set up the event args for receiving data
+            receiveEventArgs = new SocketAsyncEventArgs();
+            receiveEventArgs.SetBuffer(receiveBuffer, 0, receiveBuffer.Length);
+            receiveEventArgs.Completed += OnReceiveCompleted;
+
+            // Start receiving data from the server
+            StartReceive();
         }
         catch (Exception e)
         {
@@ -31,17 +45,75 @@ public class NetworkSocketManager : MonoBehaviour
         }
     }
 
+    // Start receiving data from the server
+    private void StartReceive()
+    {
+        if (clientSocket == null || !clientSocket.Connected)
+        {
+            Debug.LogError("Socket is not connected.");
+            return;
+        }
+
+        bool willRaiseEvent = clientSocket.ReceiveAsync(receiveEventArgs);
+        if (!willRaiseEvent)
+        {
+            // Process the receive synchronously if no event is raised
+            ProcessReceive(receiveEventArgs);
+        }
+    }
+
+    // Callback when data is received
+    private void OnReceiveCompleted(object sender, SocketAsyncEventArgs e)
+    {
+        ProcessReceive(e);
+    }
+
+    // Process received data
+    private void ProcessReceive(SocketAsyncEventArgs e)
+    {
+        if (e.SocketError == SocketError.Success && e.BytesTransferred > 0)
+        {
+            string receivedData = Encoding.ASCII.GetString(e.Buffer, e.Offset, e.BytesTransferred);
+            Debug.Log($"Received from server: {receivedData}");
+
+            // Deserialize the JSON response into an RpcResponse object using Newtonsoft.Json
+            var rpcResponse = JsonConvert.DeserializeObject<RpcResponse>(receivedData);
+
+            // Invoke the OnMessageReceived event
+            OnMessageReceived?.Invoke(rpcResponse);
+
+            // Continue receiving data
+            StartReceive();
+        }
+        else
+        {
+            Debug.LogError("Server disconnected or error occurred.");
+            CloseConnection();
+        }
+    }
+
     // Send an RPC to the server
     public void SendRpc(RpcRequest rpcRequest)
     {
-        if (client == null || !client.Connected) return;
+        if (clientSocket == null || !clientSocket.Connected) return;
 
         try
         {
             // Serialize the RPC request to JSON using Newtonsoft.Json
             string jsonRpc = JsonConvert.SerializeObject(rpcRequest);
             byte[] data = Encoding.ASCII.GetBytes(jsonRpc);
-            stream.Write(data, 0, data.Length);
+
+            sendEventArgs = new SocketAsyncEventArgs();
+            sendEventArgs.SetBuffer(data, 0, data.Length);
+            sendEventArgs.Completed += OnSendCompleted;
+
+            bool willRaiseEvent = clientSocket.SendAsync(sendEventArgs);
+            if (!willRaiseEvent)
+            {
+                // Process the send synchronously if no event is raised
+                ProcessSend(sendEventArgs);
+            }
+
             Debug.Log($"Sent RPC: {jsonRpc}");
         }
         catch (Exception e)
@@ -50,81 +122,36 @@ public class NetworkSocketManager : MonoBehaviour
         }
     }
 
-    // Continuously receive messages (RPC responses or other data) from the server
-    public void StartReceiving(Action<RpcResponse> onMessageReceived)
+    // Callback when data is sent
+    private void OnSendCompleted(object sender, SocketAsyncEventArgs e)
     {
-        if (client == null || !client.Connected)
-        {
-            Debug.LogError("Client is not connected.");
-            return;
-        }
-
-        isRunning = true;
-
-        new Thread(() =>
-        {
-            while (isRunning)
-            {
-                try
-                {
-                    if (stream.DataAvailable)
-                    {
-                        string message = Receive();
-                        if (!string.IsNullOrEmpty(message))
-                        {
-                            // Deserialize the JSON response into an RpcResponse object using Newtonsoft.Json
-                            var rpcResponse = JsonConvert.DeserializeObject<RpcResponse>(message);
-
-                            // Invoke the callback with the deserialized response
-                            onMessageReceived?.Invoke(rpcResponse);
-                        }
-                    }
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"Error receiving data: {e.Message}");
-                    Stop();
-                }
-
-                Thread.Sleep(10); // Small delay to prevent tight loop
-            }
-        }).Start();
+        ProcessSend(e);
     }
 
-    // Receive a message from the server
-    private string Receive()
+    // Process sent data
+    private void ProcessSend(SocketAsyncEventArgs e)
     {
-        if (client == null || !client.Connected) return null;
-
-        try
+        if (e.SocketError == SocketError.Success)
         {
-            byte[] buffer = new byte[1024];
-            int bytesRead = stream.Read(buffer, 0, buffer.Length);
-            return Encoding.ASCII.GetString(buffer, 0, bytesRead);
+            Debug.Log("Data sent successfully.");
         }
-        catch (Exception e)
+        else
         {
-            Debug.LogError($"Error during message reception: {e.Message}");
-            Stop();
-            return null;
+            Debug.LogError("Error sending data.");
+            CloseConnection();
         }
     }
 
-    // Stop receiving messages and close the connection
-    public void Stop()
+    // Close the connection and clean up resources
+    public void CloseConnection()
     {
         isRunning = false;
 
-        if (stream != null)
+        if (clientSocket != null)
         {
-            stream.Close();
-            stream = null;
-        }
-
-        if (client != null)
-        {
-            client.Close();
-            client = null;
+            clientSocket.Shutdown(SocketShutdown.Both);
+            clientSocket.Close();
+            clientSocket = null;
         }
 
         Debug.Log("Connection closed.");
