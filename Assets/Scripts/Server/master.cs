@@ -65,7 +65,8 @@ public class EventDrivenSocketServer
         isRunning = true;
         Console.WriteLine("**** City Runner Master Server ****");
         Console.WriteLine("****    Llama Game Factory     ****");
-        Console.WriteLine("|Menu| Commands: stop");
+        Console.WriteLine("-----------------------------------");
+        Console.WriteLine("Commands: stop");
         Console.WriteLine("-----------------------------------");
         Console.WriteLine("|Server| Server Initialized.");
         StartAccept(null);
@@ -76,7 +77,7 @@ public class EventDrivenSocketServer
     }
 
     private void RemoveClient(Client client, string reason) {
-        Console.WriteLine($"|Network| Client[{client.Id}] disconnected: {reason}");
+        Console.WriteLine($"|Client| Client[{client.Id}] disconnected: {reason}");
         client.Close();
         if (clients.TryRemove(client.Id, out _))
         {
@@ -128,7 +129,7 @@ public class EventDrivenSocketServer
         client.ipAddress = e.AcceptSocket.RemoteEndPoint.ToString();
 
         clients.TryAdd(client.Id, client);
-        Console.WriteLine($"|Network| Client[{client.Id}] Connected | IP: {client.ipAddress}");
+        Console.WriteLine($"|Client| Client[{client.Id}] Connected | IP: {client.ipAddress}");
 
         StartReceive(client);
         StartAccept(e);
@@ -360,7 +361,7 @@ public class EventDrivenSocketServer
         Console.WriteLine("Connected Clients:");
         foreach (var client in clients.Values)
         {
-            Console.WriteLine($"- Client {client.Id} | IP: {client.ipAddress})");
+            Console.WriteLine($"Client [{client.Id}] | IP: {client.ipAddress})");
         }
     }
 }
