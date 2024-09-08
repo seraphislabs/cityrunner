@@ -71,6 +71,15 @@ public class EventDrivenSocketServer
         heartbeatThread.Start();
     }
 
+    private void RemoveClient(Client client, string reason) {
+        Console.WriteLine($"Client {client.Id} disconnected: {reason}");
+        client.Close();
+        if (clients.TryRemove(client.Id, out _))
+        {
+            availableIds.Enqueue(client.Id); // Reuse ID
+        }
+    }
+
     private void StartAccept(SocketAsyncEventArgs acceptEventArg)
     {
         if (!isRunning) return;
@@ -104,8 +113,6 @@ public class EventDrivenSocketServer
     {
         if (!isRunning) return;
 
-        Console.WriteLine("Client connected!");
-
         // Get an available client ID or generate a new one
         int clientId;
         if (!availableIds.TryDequeue(out clientId))
@@ -117,7 +124,7 @@ public class EventDrivenSocketServer
         client.ipAddress = e.AcceptSocket.RemoteEndPoint.ToString();
 
         clients.TryAdd(client.Id, client);
-        Console.WriteLine($"Client {client.Id} added. With IP: {client.ipAddress}");
+        Console.WriteLine($"+ [{client.Id}]Client Connected | IP: {client.ipAddress}");
 
         StartReceive(client);
         StartAccept(e);
@@ -163,21 +170,11 @@ public class EventDrivenSocketServer
         }
         else if (e.SocketError == SocketError.ConnectionReset || e.BytesTransferred == 0 || IsSocketDisconnected(client.Socket))
         {
-            Console.WriteLine($"Client {client.Id} (Session {client.SessionId}) forcefully disconnected.");
-            client.Close();
-            if (clients.TryRemove(client.Id, out _))
-            {
-                availableIds.Enqueue(client.Id); // Reuse ID
-            }
+            RemoveClient(client, "Connection reset by client.");
         }
         else
         {
-            Console.WriteLine($"Error with Client {client.Id}: {e.SocketError}");
-            client.Close();
-            if (clients.TryRemove(client.Id, out _))
-            {
-                availableIds.Enqueue(client.Id); // Reuse ID
-            }
+            RemoveClient(client, "Socket Error: " + e.SocketError);
         }
     }
 
@@ -228,7 +225,7 @@ public class EventDrivenSocketServer
         }
         else
         {
-            Console.WriteLine($"Error sending data to Client {client.Id}: {e.SocketError}");
+            //Console.WriteLine($"Error sending data to Client {client.Id}: {e.SocketError}");
         }
     }
 
@@ -328,10 +325,8 @@ public class EventDrivenSocketServer
                     {
                         if ((now - client.LastHeartbeat).TotalSeconds > heartbeatTimeout)
                         {
-                            Console.WriteLine($"Client {client.Id} did not send heartbeat, disconnecting.");
-                            client.Close();
-                            clients.TryRemove(client.Id, out _);
-                            availableIds.Enqueue(client.Id); // Reuse ID
+                            // TODO: Generic Disconnect
+                            RemoveClient(client, "Timeout");
                         }
                     }
                 }));
@@ -362,7 +357,7 @@ public class EventDrivenSocketServer
         Console.WriteLine("Connected Clients:");
         foreach (var client in clients.Values)
         {
-            Console.WriteLine($"Client {client.Id}: Connected = {client.IsConnected}");
+            Console.WriteLine($"- Client {client.Id} | IP: {client.ipAddress})");
         }
     }
 }
@@ -374,7 +369,7 @@ public class TcpServer
         EventDrivenSocketServer server = new EventDrivenSocketServer("0.0.0.0", 5000);
         server.Start();
 
-        Console.WriteLine("Press ENTER to show connected clients or type 'stop' to stop the server...");
+        Console.WriteLine("*** Commands: [stop] ***");
         string input = "";  // Initialize the input variable to avoid the unassigned variable error
         while (server.IsRunning && (input = Console.ReadLine()) != "stop")
         {
