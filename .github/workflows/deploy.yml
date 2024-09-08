@@ -20,11 +20,11 @@ jobs:
 
     - name: Copy Server files to server
       run: |
-        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./Assets/Scripts/Server seraphis@67.205.148.170:/srv/cityrunnerserver/
+        rsync -avz -e "ssh -o StrictHostKeyChecking=no" ./Assets/Scripts/Server seraphis@67.205.148.170:/srv/cityrunnerserver/
 
     - name: Copy Shared files to server
       run: |
-        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./Assets/Scripts/Shared seraphis@67.205.148.170:/srv/cityrunnerserver/
+        rsync -avz -e "ssh -o StrictHostKeyChecking=no" ./Assets/Scripts/Shared seraphis@67.205.148.170:/srv/cityrunnerserver/
 
     - name: Run buildserver.sh on the server
       run: |
