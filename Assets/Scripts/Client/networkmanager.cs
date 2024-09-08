@@ -18,6 +18,9 @@ public class NetworkSocketManager : MonoBehaviour
     private SocketAsyncEventArgs sendEventArgs;    // Event args for sending data
     private SocketAsyncEventArgs receiveEventArgs; // Event args for receiving data
 
+    private float heartbeatInterval = 5f; // Send heartbeat every 5 seconds
+    private float lastHeartbeatTime;
+
     // Dictionary to hold callbacks and their expiration time (timeout)
     private Dictionary<string, (Action<RpcResponse>, float)> responseCallbacks = new Dictionary<string, (Action<RpcResponse>, float)>();
 
@@ -42,6 +45,8 @@ public class NetworkSocketManager : MonoBehaviour
 
             // Start receiving data from the server
             StartReceive();
+
+            lastHeartbeatTime = Time.time;  // Initialize the last heartbeat time
         }
         catch (Exception e)
         {
@@ -184,7 +189,7 @@ public class NetworkSocketManager : MonoBehaviour
     {
         List<string> expiredRequests = new List<string>();
 
-        // Iterate over the responseCallbacks dictionary to check for timeouts
+        // Check for timeouts on requests
         foreach (var entry in responseCallbacks)
         {
             if (Time.time > entry.Value.Item2) // Timeout expired
@@ -199,6 +204,27 @@ public class NetworkSocketManager : MonoBehaviour
         {
             responseCallbacks.Remove(requestId);
         }
+
+        // Send heartbeats periodically
+        if (Time.time - lastHeartbeatTime >= heartbeatInterval)
+        {
+            SendHeartbeat();
+            lastHeartbeatTime = Time.time;  // Reset heartbeat time
+        }
+    }
+
+    // Send a heartbeat message to the server
+    private void SendHeartbeat()
+    {
+        var heartbeatRequest = new RpcRequest
+        {
+            Command = "heartbeat",
+            RequestId = Guid.NewGuid().ToString(),
+            Parameters = null
+        };
+
+        SendRpc(heartbeatRequest);
+        Debug.Log("Sent heartbeat to server.");
     }
 
     // Close the connection and clean up resources
