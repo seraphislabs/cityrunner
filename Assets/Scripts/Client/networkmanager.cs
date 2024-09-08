@@ -18,8 +18,10 @@ public class NetworkSocketManager
     private SocketAsyncEventArgs sendEventArgs;    // Event args for sending data
     private SocketAsyncEventArgs receiveEventArgs; // Event args for receiving data
 
-    private float heartbeatInterval = 10f; // Send heartbeat every 5 seconds
+    private float heartbeatInterval = 10f; // Send heartbeat every 10 seconds
     private float lastHeartbeatTime;
+    private float heartbeatTimeout = 20f;  // Timeout for receiving heartbeat response
+    private bool awaitingHeartbeatResponse = false; // Track if waiting for a heartbeat response
 
     // Dictionary to hold callbacks and their expiration time (timeout)
     private Dictionary<string, (Action<RpcResponse>, float)> responseCallbacks = new Dictionary<string, (Action<RpcResponse>, float)>();
@@ -59,6 +61,7 @@ public class NetworkSocketManager
     // Start receiving data from the server
     private void StartReceive()
     {
+        if (!isRunning) return;
         if (clientSocket == null || !clientSocket.Connected)
         {
             Debug.LogError("Socket is not connected.");
@@ -82,6 +85,7 @@ public class NetworkSocketManager
     // Process received data
     private void ProcessReceive(SocketAsyncEventArgs e)
     {
+
         if (e.SocketError == SocketError.Success && e.BytesTransferred > 0)
         {
             string receivedData = Encoding.ASCII.GetString(e.Buffer, e.Offset, e.BytesTransferred);
@@ -130,6 +134,8 @@ public class NetworkSocketManager
     // Send an RPC to the server with a callback and timeout
     public void SendRpc(RpcRequest rpcRequest, Action<RpcResponse> callback = null, float timeout = 5f)
     {
+        if (!isRunning) return;
+
         if (clientSocket == null || !clientSocket.Connected) return;
 
         try
@@ -169,12 +175,16 @@ public class NetworkSocketManager
     // Callback when data is sent
     private void OnSendCompleted(object sender, SocketAsyncEventArgs e)
     {
+        if (!isRunning) return;
+
         ProcessSend(e);
     }
 
     // Process sent data
     private void ProcessSend(SocketAsyncEventArgs e)
     {
+        if (!isRunning) return;
+
         if (e.SocketError == SocketError.Success)
         {
             Debug.Log("Data sent successfully.");
@@ -189,6 +199,7 @@ public class NetworkSocketManager
     // Check for timeouts in the callbacks
     public void Tick()
     {
+        if (!isRunning) return;
         List<string> expiredRequests = new List<string>();
 
         // Check for timeouts on requests
@@ -208,16 +219,26 @@ public class NetworkSocketManager
         }
 
         // Send heartbeats periodically
-        if (Time.time - lastHeartbeatTime >= heartbeatInterval)
+        if (Time.time - lastHeartbeatTime >= heartbeatInterval && !awaitingHeartbeatResponse)
         {
             SendHeartbeat();
             lastHeartbeatTime = Time.time;  // Reset heartbeat time
+        }
+        else if (awaitingHeartbeatResponse && Time.time - lastHeartbeatTime > heartbeatTimeout)
+        {
+            Debug.LogError("No heartbeat response from server. Closing application...");
+            CloseConnection();
+            Application.Quit();  // Close the application if using Unity
         }
     }
 
     // Send a heartbeat message to the server
     private void SendHeartbeat()
     {
+
+        if (!isRunning) return;
+
+        awaitingHeartbeatResponse = true;  // Expect a response from the server
         var heartbeatRequest = new RpcRequest
         {
             Command = "heartbeat",
@@ -225,7 +246,15 @@ public class NetworkSocketManager
             Parameters = null
         };
 
-        SendRpc(heartbeatRequest);
+        // Send heartbeat and expect a response within heartbeatTimeout
+        SendRpc(heartbeatRequest, response =>
+        {
+            if (response.Result == "ok")
+            {
+                Debug.Log("Heartbeat acknowledged by server.");
+                awaitingHeartbeatResponse = false;  // Received the response, no need to close
+            }
+        }, heartbeatTimeout);
         Debug.Log("Sent heartbeat to server.");
     }
 
