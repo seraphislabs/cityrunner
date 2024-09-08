@@ -92,11 +92,16 @@ public class EventDrivenSocketServer
 
     private void OnAcceptCompleted(object sender, SocketAsyncEventArgs e)
     {
-        ProcessAccept(e);
+        if (isRunning)
+        {
+            ProcessAccept(e);
+        }
     }
 
     private void ProcessAccept(SocketAsyncEventArgs e)
     {
+        if (!isRunning) return;
+
         Console.WriteLine("Client connected!");
 
         // Get an available client ID or generate a new one
