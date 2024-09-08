@@ -26,4 +26,6 @@ jobs:
       run: |
         rsync -avz -e "ssh -o StrictHostKeyChecking=no" ./Assets/Scripts/Shared seraphis@67.205.148.170:/srv/cityrunnerserver/
 
-    
+    - name: Run buildserver.sh on the server
+      run: |
+        ssh -o StrictHostKeyChecking=no seraphis@67.205.148.170 'cd /srv/cityrunnerserver/Server && chmod +x ./buildserver.sh && ./buildserver.sh'
