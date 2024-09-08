@@ -4,6 +4,8 @@ using System.Net.Sockets;
 using System.Text;
 using System.Collections.Generic;
 using System.Threading;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 public class Client
 {
@@ -11,12 +13,15 @@ public class Client
     public Socket Socket { get; set; }
     public byte[] Buffer { get; set; } = new byte[1024];
     public bool IsConnected { get; set; }
+    public string ipAddress { get; set; }
+    public Guid SessionId { get; set; }  // Add a unique session identifier
 
     public Client(int id, Socket socket)
     {
         Id = id;
         Socket = socket;
         IsConnected = true;
+        SessionId = Guid.NewGuid();  // Generate a new session ID
     }
 
     public void Close()
@@ -83,9 +88,10 @@ public class EventDrivenSocketServer
         // Assign a unique ID to the client from the available IDs or create a new one
         int clientId = availableIds.Count > 0 ? availableIds.Dequeue() : clientIdCounter++;
         Client client = new Client(clientId, e.AcceptSocket);
+        client.ipAddress = e.AcceptSocket.RemoteEndPoint.ToString();
 
         clients.Add(client);
-        Console.WriteLine($"Client {client.Id} added. With IP: {client.Socket.RemoteEndPoint}");
+        Console.WriteLine($"Client {client.Id} added. With IP: {client.ipAddress}");
 
         // Start receiving data from the client
         StartReceive(client);
@@ -115,37 +121,33 @@ public class EventDrivenSocketServer
 
     private void ProcessReceive(SocketAsyncEventArgs e)
     {
-        Client client = e.UserToken as Client;
+        Client client = e.UserToken as Client; // Retrieve the client from UserToken
 
         if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
         {
             string receivedData = Encoding.ASCII.GetString(e.Buffer, e.Offset, e.BytesTransferred);
             Console.WriteLine($"Received from Client {client.Id}: {receivedData}");
 
-            // Process the command and get the response
-            string response = ProcessRpcCommand(receivedData);
+            // Process the command and get the response, passing the client as context
+            string response = ProcessRpcCommand(receivedData, client);
 
             // Send response back to the client
             StartSend(client, response);
         }
         else if (e.SocketError == SocketError.ConnectionReset || e.BytesTransferred == 0)
         {
-            // This means the client forcefully disconnected or disconnected gracefully
-            Console.WriteLine($"Client {client.Id} forcefully disconnected.");
+            // Handle disconnection
+            Console.WriteLine($"Client {client.Id} (Session {client.SessionId}) forcefully disconnected.");
             client.Close();
             clients.Remove(client);
-
-            // Add the disconnected client's ID back to the available ID queue
-            availableIds.Enqueue(client.Id);
+            availableIds.Enqueue(client.Id); // Reuse ID
         }
         else
         {
             Console.WriteLine($"Error with Client {client.Id}: {e.SocketError}");
             client.Close();
             clients.Remove(client);
-
-            // Add the disconnected client's ID back to the available ID queue
-            availableIds.Enqueue(client.Id);
+            availableIds.Enqueue(client.Id); // Reuse ID
         }
     }
 
@@ -184,10 +186,69 @@ public class EventDrivenSocketServer
         }
     }
 
-    private string ProcessRpcCommand(string jsonData)
+    private string ProcessRpcCommand(string jsonData, Client client)
     {
-        // Simulate processing a command (replace with actual JSON parsing and command handling)
-        return $"Echo: {jsonData}";
+        try
+        {
+            // Parse the incoming JSON to a JObject for dynamic handling
+            JObject jsonRequest = JObject.Parse(jsonData);
+
+            // Extract the "Command" field
+            string command = jsonRequest["Command"]?.ToString();
+
+            // Check if the command is "greet"
+            if (command == "greet")
+            {
+                // Extract the parameters (assuming there is an "auth" field in the parameters)
+                string auth = jsonRequest["Parameters"]?["auth"]?.ToString();
+
+                if (!string.IsNullOrEmpty(auth))
+                {
+                    // Create the response and include client information like IP, ID, and SessionId
+                    var response = new
+                    {
+                        Result = $"Hello, {auth}! Your ID is {client.Id}, your IP is {client.ipAddress}, and your session ID is {client.SessionId}.",
+                        Error = (string)null  // No error
+                    };
+
+                    // Serialize the response back to JSON
+                    return JsonConvert.SerializeObject(response);
+                }
+                else
+                {
+                    // If the auth parameter is missing or empty
+                    var errorResponse = new
+                    {
+                        Result = (string)null,
+                        Error = "Missing 'auth' parameter in 'greet' command"
+                    };
+
+                    return JsonConvert.SerializeObject(errorResponse);
+                }
+            }
+            else
+            {
+                // Handle unknown commands
+                var unknownCommandResponse = new
+                {
+                    Result = (string)null,
+                    Error = $"Unknown command: {command}"
+                };
+
+                return JsonConvert.SerializeObject(unknownCommandResponse);
+            }
+        }
+        catch (JsonException ex)
+        {
+            // Handle JSON parsing errors
+            var errorResponse = new
+            {
+                Result = (string)null,
+                Error = $"Invalid JSON format: {ex.Message}"
+            };
+
+            return JsonConvert.SerializeObject(errorResponse);
+        }
     }
 
     public void Stop()

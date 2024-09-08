@@ -28,7 +28,7 @@ public class Lobby : MonoBehaviour
             var rpcRequest = new RpcRequest
             {
                 Command = "greet",
-                Parameters = new { name = "Player1" }
+                Parameters = new { auth = false }
             };
 
             networkSocketManager.SendRpc(rpcRequest);
