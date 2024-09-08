@@ -6,7 +6,7 @@ using System.Text;
 using UnityEngine;
 using Newtonsoft.Json;
 
-public class NetworkSocketManager : MonoBehaviour
+public class NetworkSocketManager
 {
     private string ServerIp;
     private int Port;
@@ -37,6 +37,8 @@ public class NetworkSocketManager : MonoBehaviour
             clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             clientSocket.Connect(new IPEndPoint(IPAddress.Parse(ServerIp), Port));
             Debug.Log("Connected to the server successfully.");
+
+            isRunning = true;
 
             // Set up the event args for receiving data
             receiveEventArgs = new SocketAsyncEventArgs();
@@ -185,7 +187,7 @@ public class NetworkSocketManager : MonoBehaviour
     }
 
     // Check for timeouts in the callbacks
-    private void Update()
+    public void Tick()
     {
         List<string> expiredRequests = new List<string>();
 

@@ -287,6 +287,7 @@ public class EventDrivenSocketServer
                     Console.WriteLine($"Client {client.Id} did not send heartbeat, disconnecting.");
                     client.Close();
                     clients.Remove(client);
+                    availableIds.Enqueue(client.Id); // Reuse ID
                 }
             }
             Thread.Sleep(5000); // Check every 5 seconds

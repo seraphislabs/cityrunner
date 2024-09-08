@@ -90,6 +90,12 @@ public class Lobby : MonoBehaviour
 
     void Update()
     {
+        if (networkSocketManager != null)
+        {
+            // Call the Tick() method on the network manager to handle updates like heartbeats
+            networkSocketManager.Tick();
+        }
+
         // Optional: You can send more messages to the server here (e.g., when pressing the space key)
         if (Input.GetKeyDown(KeyCode.Space))
         {
