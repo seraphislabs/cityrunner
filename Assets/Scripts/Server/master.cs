@@ -4,7 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using System.Text.Json;
+using Newtonsoft.Json; // Using Newtonsoft.Json
 
 public class Client
 {
@@ -117,32 +117,32 @@ public class AsyncNetworkSocketServer
     {
         try
         {
-            // Deserialize the incoming JSON data into an RpcRequest object
-            var rpcRequest = JsonSerializer.Deserialize<RpcRequest>(jsonData);
+            // Deserialize the incoming JSON data into an RpcRequest object using Newtonsoft.Json
+            var rpcRequest = JsonConvert.DeserializeObject<RpcRequest>(jsonData);
 
             switch (rpcRequest.Command.ToLower())
             {
                 case "add":
-                    // Get the parameters for the "add" command
-                    var addParams = JsonSerializer.Deserialize<Dictionary<string, int>>(rpcRequest.Parameters.ToString());
+                    // Get the parameters for the "add" command using Newtonsoft.Json
+                    var addParams = JsonConvert.DeserializeObject<Dictionary<string, int>>(rpcRequest.Parameters.ToString());
                     int a = addParams["a"];
                     int b = addParams["b"];
                     int sum = a + b;
-                    return JsonSerializer.Serialize(new { result = sum });
+                    return JsonConvert.SerializeObject(new { result = sum });
 
                 case "greet":
-                    // Get the name for the "greet" command
-                    var greetParams = JsonSerializer.Deserialize<Dictionary<string, string>>(rpcRequest.Parameters.ToString());
+                    // Get the name for the "greet" command using Newtonsoft.Json
+                    var greetParams = JsonConvert.DeserializeObject<Dictionary<string, string>>(rpcRequest.Parameters.ToString());
                     string name = greetParams["name"];
-                    return JsonSerializer.Serialize(new { message = $"Hello, {name}!" });
+                    return JsonConvert.SerializeObject(new { message = $"Hello, {name}!" });
 
                 default:
-                    return JsonSerializer.Serialize(new { error = "Unknown command" });
+                    return JsonConvert.SerializeObject(new { error = "Unknown command" });
             }
         }
         catch (Exception e)
         {
-            return JsonSerializer.Serialize(new { error = "Invalid request", details = e.Message });
+            return JsonConvert.SerializeObject(new { error = "Invalid request", details = e.Message });
         }
     }
 

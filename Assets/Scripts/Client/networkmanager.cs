@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using UnityEngine;
-using System.Text.Json;
+using Newtonsoft.Json;
 
 public class NetworkSocketManager : MonoBehaviour
 {
@@ -38,8 +38,8 @@ public class NetworkSocketManager : MonoBehaviour
 
         try
         {
-            // Serialize the RPC request to JSON
-            string jsonRpc = JsonSerializer.Serialize(rpcRequest);
+            // Serialize the RPC request to JSON using Newtonsoft.Json
+            string jsonRpc = JsonConvert.SerializeObject(rpcRequest);
             byte[] data = Encoding.ASCII.GetBytes(jsonRpc);
             stream.Write(data, 0, data.Length);
             Debug.Log($"Sent RPC: {jsonRpc}");
@@ -72,8 +72,8 @@ public class NetworkSocketManager : MonoBehaviour
                         string message = Receive();
                         if (!string.IsNullOrEmpty(message))
                         {
-                            // Deserialize the JSON response into an RpcResponse object
-                            var rpcResponse = JsonSerializer.Deserialize<RpcResponse>(message);
+                            // Deserialize the JSON response into an RpcResponse object using Newtonsoft.Json
+                            var rpcResponse = JsonConvert.DeserializeObject<RpcResponse>(message);
 
                             // Invoke the callback with the deserialized response
                             onMessageReceived?.Invoke(rpcResponse);
