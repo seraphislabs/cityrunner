@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -13,7 +14,16 @@ public class Lobby : MonoBehaviour
 
     void Start()
     {
+        // Ensure the MainThreadDispatcher is added to the scene
+        if (GameObject.FindAnyObjectByType<MainThreadDispatcher>() == null)
+        {
+            GameObject dispatcherObj = new GameObject("MainThreadDispatcher");
+            dispatcherObj.AddComponent<MainThreadDispatcher>();
+        }
+
         // Initialize the UI element (messageLabel) from the UI Document
+        var rootVisualElement = GetComponent<UIDocument>().rootVisualElement;
+        messageLabel = rootVisualElement.Q<Label>("MessageLabel");
 
         // Initialize the network socket manager
         try
@@ -22,28 +32,65 @@ public class Lobby : MonoBehaviour
 
             // Start receiving messages
             networkSocketManager.StartReceiving(OnMessageReceived);
+
+            // Example: Send an RPC request when the game starts
+            var rpcRequest = new RpcRequest
+            {
+                Command = "greet",
+                Parameters = new { name = "Player1" }
+            };
+
+            networkSocketManager.SendRpc(rpcRequest);
         }
         catch (Exception e)
         {
             Debug.LogError($"Error connecting to server: {e.Message}");
-            messageLabel.text = "Failed to connect to server.";
+            if (messageLabel != null)
+            {
+                messageLabel.text = "Failed to connect to server.";
+            }
         }
     }
 
     // This will be called whenever a message is received from the server
-    void OnMessageReceived(string message)
+    void OnMessageReceived(RpcResponse response)
     {
-        // Unity APIs can only be accessed from the main thread
-        // Use Unity's main thread to process the message
-        Debug.Log("Message from server: " + message);
+        Debug.Log("Received RPC response from server.");
+
+        // Schedule the UI update to happen on the main thread
+        MainThreadDispatcher.Enqueue(() =>
+        {
+            if (!string.IsNullOrEmpty(response.Error))
+            {
+                Debug.LogError($"RPC Error: {response.Error}");
+                if (messageLabel != null)
+                {
+                    messageLabel.text = $"RPC Error: {response.Error}";
+                }
+            }
+            else
+            {
+                Debug.Log($"RPC Result: {response.Result}");
+                if (messageLabel != null)
+                {
+                    messageLabel.text = $"Server Response: {response.Result}";
+                }
+            }
+        });
     }
 
     void Update()
     {
-        // Optional: You can send messages to the server here
+        // Optional: You can send more messages to the server here
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            networkSocketManager.Send("Hello Server!");
+            var rpcRequest = new RpcRequest
+            {
+                Command = "add",
+                Parameters = new { a = 5, b = 10 }
+            };
+
+            networkSocketManager.SendRpc(rpcRequest);
         }
     }
 

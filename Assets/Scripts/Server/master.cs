@@ -4,7 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-
+using System.Text.Json;
 public class Client
 {
     public int Id { get; set; }
@@ -92,8 +92,7 @@ public class AsyncNetworkSocketServer
                 Console.WriteLine($"Received from Client {client.Id}: {receivedData}");
 
                 // Process the command and get the response
-                //string response = ProcessRpcCommand(receivedData);
-                string response = "Hello from server!";
+                string response = ProcessRpcCommand(receivedData);
 
                 // Send response back to the client
                 byte[] responseData = Encoding.ASCII.GetBytes(response);
@@ -113,22 +112,27 @@ public class AsyncNetworkSocketServer
         }
     }
 
-    /*private string ProcessRpcCommand(string jsonData)
+    private string ProcessRpcCommand(string jsonData)
     {
         try
         {
+            // Deserialize the incoming JSON data into an RpcRequest object
             var rpcRequest = JsonSerializer.Deserialize<RpcRequest>(jsonData);
 
             switch (rpcRequest.Command.ToLower())
             {
                 case "add":
-                    int a = rpcRequest.Parameters.GetProperty("a").GetInt32();
-                    int b = rpcRequest.Parameters.GetProperty("b").GetInt32();
+                    // Get the parameters for the "add" command
+                    var addParams = JsonSerializer.Deserialize<Dictionary<string, int>>(rpcRequest.Parameters.ToString());
+                    int a = addParams["a"];
+                    int b = addParams["b"];
                     int sum = a + b;
                     return JsonSerializer.Serialize(new { result = sum });
 
                 case "greet":
-                    string name = rpcRequest.Parameters.GetProperty("name").GetString();
+                    // Get the name for the "greet" command
+                    var greetParams = JsonSerializer.Deserialize<Dictionary<string, string>>(rpcRequest.Parameters.ToString());
+                    string name = greetParams["name"];
                     return JsonSerializer.Serialize(new { message = $"Hello, {name}!" });
 
                 default:
@@ -139,7 +143,7 @@ public class AsyncNetworkSocketServer
         {
             return JsonSerializer.Serialize(new { error = "Invalid request", details = e.Message });
         }
-    }*/
+    }
 
     // Optional: Method to show the status of all connected clients
     public void ShowClientStatus()
@@ -163,13 +167,6 @@ public class AsyncNetworkSocketServer
     }
 }
 
-// Define a class to match the RPC request format
-public class RpcRequest
-{
-    public string Command { get; set; }
-    //public JsonElement Parameters { get; set; }
-}
-
 // Program entry point
 public class TcpServer
 {
@@ -177,14 +174,14 @@ public class TcpServer
     {
         // Create and start the server
         AsyncNetworkSocketServer server = new AsyncNetworkSocketServer("0.0.0.0", 5000);
-        _ = server.StartAsync(); // Fire-and-forget, runs server asynchronously
+        await server.StartAsync(); // Await the server's asynchronous start
 
         // Wait for the user to stop the server or display client status
         Console.WriteLine("Press ENTER to show connected clients or type 'stop' to stop the server...");
         string input;
-        while ((input = Console.ReadLine()) != "stop")
+        while ((input = await Console.In.ReadLineAsync()) != "stop") // Use ReadLineAsync to avoid blocking
         {
-            if (input == "")
+            if (string.IsNullOrEmpty(input))
             {
                 server.ShowClientStatus(); // Show client status on ENTER
             }

@@ -3,8 +3,9 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using UnityEngine;
+using System.Text.Json;
 
-public class NetworkSocketManager
+public class NetworkSocketManager : MonoBehaviour
 {
     private string ServerIp;
     private int Port;
@@ -17,7 +18,7 @@ public class NetworkSocketManager
     {
         ServerIp = serverIp;
         Port = port;
-        
+
         try
         {
             client = new TcpClient(ServerIp, Port);
@@ -30,16 +31,18 @@ public class NetworkSocketManager
         }
     }
 
-    // Send a message to the server
-    public void Send(string message)
+    // Send an RPC to the server
+    public void SendRpc(RpcRequest rpcRequest)
     {
         if (client == null || !client.Connected) return;
 
         try
         {
-            byte[] data = Encoding.ASCII.GetBytes(message);
+            // Serialize the RPC request to JSON
+            string jsonRpc = JsonSerializer.Serialize(rpcRequest);
+            byte[] data = Encoding.ASCII.GetBytes(jsonRpc);
             stream.Write(data, 0, data.Length);
-            Debug.Log($"Sent: {message}");
+            Debug.Log($"Sent RPC: {jsonRpc}");
         }
         catch (Exception e)
         {
@@ -47,8 +50,8 @@ public class NetworkSocketManager
         }
     }
 
-    // Continuously receive messages from the server
-    public void StartReceiving(Action<string> onMessageReceived)
+    // Continuously receive messages (RPC responses or other data) from the server
+    public void StartReceiving(Action<RpcResponse> onMessageReceived)
     {
         if (client == null || !client.Connected)
         {
@@ -64,12 +67,16 @@ public class NetworkSocketManager
             {
                 try
                 {
-                    if (stream.DataAvailable) // Check if there is data available
+                    if (stream.DataAvailable)
                     {
                         string message = Receive();
                         if (!string.IsNullOrEmpty(message))
                         {
-                            onMessageReceived?.Invoke(message); // Call the callback with the received message
+                            // Deserialize the JSON response into an RpcResponse object
+                            var rpcResponse = JsonSerializer.Deserialize<RpcResponse>(message);
+
+                            // Invoke the callback with the deserialized response
+                            onMessageReceived?.Invoke(rpcResponse);
                         }
                     }
                 }
