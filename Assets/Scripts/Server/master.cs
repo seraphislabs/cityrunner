@@ -59,7 +59,7 @@ public class AsyncNetworkSocketServer
                 // Assign a unique ID to the client and add it to the client list
                 Client client = new Client(clientIdCounter++, tcpClient);
                 clients.Add(client);
-                Console.WriteLine($"Client {client.Id} added.");
+                Console.WriteLine($"Client {client.Id} added. With IP: {tcpClient.Client.RemoteEndPoint}");
 
                 // Handle the client connection asynchronously
                 _ = HandleClientAsync(client);
