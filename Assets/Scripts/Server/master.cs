@@ -47,6 +47,7 @@ public class EventDrivenSocketServer
     private bool isRunning;
     private ConcurrentDictionary<int, Client> clients = new ConcurrentDictionary<int, Client>();
     private int clientIdCounter = 0;
+    private ConcurrentQueue<int> availableIds = new ConcurrentQueue<int>(); // Queue for available IDs
     private int heartbeatTimeout = 15; // Timeout for heartbeats in seconds
 
     public EventDrivenSocketServer(string ipAddress, int port)
@@ -98,7 +99,13 @@ public class EventDrivenSocketServer
     {
         Console.WriteLine("Client connected!");
 
-        int clientId = Interlocked.Increment(ref clientIdCounter);
+        // Get an available client ID or generate a new one
+        int clientId;
+        if (!availableIds.TryDequeue(out clientId))
+        {
+            clientId = Interlocked.Increment(ref clientIdCounter);
+        }
+
         Client client = new Client(clientId, e.AcceptSocket);
         client.ipAddress = e.AcceptSocket.RemoteEndPoint.ToString();
 
@@ -151,13 +158,19 @@ public class EventDrivenSocketServer
         {
             Console.WriteLine($"Client {client.Id} (Session {client.SessionId}) forcefully disconnected.");
             client.Close();
-            clients.TryRemove(client.Id, out _); // Remove client safely
+            if (clients.TryRemove(client.Id, out _))
+            {
+                availableIds.Enqueue(client.Id); // Reuse ID
+            }
         }
         else
         {
             Console.WriteLine($"Error with Client {client.Id}: {e.SocketError}");
             client.Close();
-            clients.TryRemove(client.Id, out _); // Remove client safely
+            if (clients.TryRemove(client.Id, out _))
+            {
+                availableIds.Enqueue(client.Id); // Reuse ID
+            }
         }
     }
 
@@ -304,6 +317,7 @@ public class EventDrivenSocketServer
                             Console.WriteLine($"Client {client.Id} did not send heartbeat, disconnecting.");
                             client.Close();
                             clients.TryRemove(client.Id, out _);
+                            availableIds.Enqueue(client.Id); // Reuse ID
                         }
                     }
                 }));
