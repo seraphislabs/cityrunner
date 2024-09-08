@@ -2,82 +2,101 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Tasks;
 
-class TcpServer
+public class AsyncNetworkSocketServer
 {
-    private const int Port = 5000; // Port number to listen on
+    private TcpListener server;
+    private bool isRunning;
 
-    public static void Main()
+    public AsyncNetworkSocketServer(string ipAddress, int port)
     {
-        TcpListener server = null;
-        try
+        // Initialize the TCP listener with the given IP address and port
+        server = new TcpListener(IPAddress.Parse(ipAddress), port);
+    }
+
+    public async Task StartAsync()
+    {
+        isRunning = true;
+        server.Start();
+        Console.WriteLine("Server started, waiting for connections...");
+
+        // Continuously accept incoming connections asynchronously
+        while (isRunning)
         {
-            // Set the server IP address to listen on all interfaces (0.0.0.0)
-            IPAddress localAddr = IPAddress.Any;
-
-            // Create a TCP listener to listen on the specified port
-            server = new TcpListener(localAddr, Port);
-
-            // Start the server
-            server.Start();
-            Console.WriteLine($"Server started on port {Port}...");
-
-            while (true)
+            try
             {
-                // Accept an incoming client connection
-                Console.WriteLine("Waiting for a connection...");
-                TcpClient client = server.AcceptTcpClient();
+                // Accept a new client connection asynchronously
+                TcpClient client = await server.AcceptTcpClientAsync();
                 Console.WriteLine("Client connected!");
 
-                // Handle the client connection in a separate function
-                HandleClient(client);
+                // Handle the client connection asynchronously
+                _ = HandleClientAsync(client); // Fire-and-forget, run client in parallel
             }
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine($"Error: {e.Message}");
-        }
-        finally
-        {
-            // Stop the server if necessary
-            server?.Stop();
+            catch (Exception e)
+            {
+                Console.WriteLine($"Error: {e.Message}");
+            }
         }
     }
 
-    private static void HandleClient(TcpClient client)
+    private async Task HandleClientAsync(TcpClient client)
     {
-        NetworkStream stream = null;
-        try
+        using (NetworkStream stream = client.GetStream())
         {
-            // Get the network stream for reading and writing
-            stream = client.GetStream();
-
-            // Buffer for reading data
             byte[] buffer = new byte[1024];
-            int bytesRead;
 
-            // Read the data sent by the client
-            while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) != 0)
+            try
             {
-                // Convert the received data to a string
-                string message = Encoding.ASCII.GetString(buffer, 0, bytesRead);
-                Console.WriteLine($"Received: {message}");
+                while (client.Connected)
+                {
+                    // Read data asynchronously
+                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                    if (bytesRead == 0) break; // Client has disconnected
 
-                // Send a response back to the client (echo the message)s
-                byte[] response = Encoding.ASCII.GetBytes("Echo: " + message);
-                stream.Write(response, 0, response.Length);
-                Console.WriteLine($"Sent: Echo: {message}");
+                    // Convert the received data to a string
+                    string message = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+                    Console.WriteLine($"Received: {message}");
+
+                    // Echo the message back to the client
+                    byte[] response = Encoding.ASCII.GetBytes("Echo: " + message);
+                    await stream.WriteAsync(response, 0, response.Length);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Error handling client: {e.Message}");
+            }
+            finally
+            {
+                // Close the client connection
+                client.Close();
+                Console.WriteLine("Client disconnected");
             }
         }
-        catch (Exception e)
-        {
-            Console.WriteLine($"Error handling client: {e.Message}");
-        }
-        finally
-        {
-            // Close the connection
-            stream?.Close();
-            client.Close();
-        }
+    }
+
+    public void Stop()
+    {
+        isRunning = false;
+        server.Stop();
+        Console.WriteLine("Server stopped.");
+    }
+}
+
+class TcpServer
+{
+    public static async Task Main(string[] args)
+    {
+        // Create and start the server
+        AsyncNetworkSocketServer server = new AsyncNetworkSocketServer("0.0.0.0", 5000);
+        _ = server.StartAsync(); // Fire-and-forget, runs server asynchronously
+
+        // Wait for the user to stop the server
+        Console.WriteLine("Press ENTER to stop the server...");
+        Console.ReadLine();
+        
+        // Stop the server
+        server.Stop();
     }
 }

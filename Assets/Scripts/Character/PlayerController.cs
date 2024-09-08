@@ -1,9 +1,8 @@
-using Fusion;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-public class PlayerController: NetworkBehaviour
+public class PlayerController: MonoBehaviour
 {
     public float speed = 2.0f; // Speed of the character
     private float actualSpeed = 2.0f;
