@@ -193,6 +193,9 @@ public class EventDrivenSocketServer
             // Parse the incoming JSON to a JObject for dynamic handling
             JObject jsonRequest = JObject.Parse(jsonData);
 
+            // Extract the "RequestId" field
+            string requestId = jsonRequest["RequestId"]?.ToString();
+
             // Extract the "Command" field
             string command = jsonRequest["Command"]?.ToString();
 
@@ -205,33 +208,18 @@ public class EventDrivenSocketServer
                 if (!string.IsNullOrEmpty(auth))
                 {
                     // Create the RpcResponse and include client information like IP, ID, and SessionId
-                    RpcResponse response = new RpcResponse();
-                    if (auth == "false") {
-                        response = new RpcResponse
+                    RpcResponse response = new RpcResponse
+                    {
+                        Result = auth == "false" ? "false" : "true",
+                        Error = null,  // No error
+                        RequestId = requestId,  // Include the RequestId in the response
+                        Parameters = new
                         {
-                            Result = "false",
-                            Error = null,  // No error
-                            Parameters = new
-                            {
-                                ClientId = client.Id,
-                                IpAddress = client.ipAddress,
-                                SessionId = client.SessionId
-                            }
-                        };
-                    }
-                    else {
-                        response = new RpcResponse
-                        {
-                            Result = "true",
-                            Error = null,  // No error
-                            Parameters = new
-                            {
-                                ClientId = client.Id,
-                                IpAddress = client.ipAddress,
-                                SessionId = client.SessionId
-                            }
-                        };
-                    }
+                            ClientId = client.Id,
+                            IpAddress = client.ipAddress,
+                            SessionId = client.SessionId
+                        }
+                    };
 
                     // Serialize the RpcResponse back to JSON
                     return JsonConvert.SerializeObject(response);
@@ -243,6 +231,7 @@ public class EventDrivenSocketServer
                     {
                         Result = null,
                         Error = "Missing 'auth' parameter in 'greet' command",
+                        RequestId = requestId,  // Include the RequestId in the error response
                         Parameters = null
                     };
 
@@ -256,6 +245,7 @@ public class EventDrivenSocketServer
                 {
                     Result = null,
                     Error = $"Unknown command: {command}",
+                    RequestId = requestId,  // Include the RequestId in the error response
                     Parameters = null
                 };
 
@@ -269,6 +259,7 @@ public class EventDrivenSocketServer
             {
                 Result = null,
                 Error = $"Invalid JSON format: {ex.Message}",
+                RequestId = null,  // No valid RequestId if JSON is invalid
                 Parameters = null
             };
 
