@@ -59,6 +59,11 @@ public class EventDrivenSocketServer
 
     private void StartAccept(SocketAsyncEventArgs acceptEventArg)
     {
+        if (!isRunning)
+        {
+            return; // Don't accept new clients if the server is stopped
+        }
+
         if (acceptEventArg == null)
         {
             acceptEventArg = new SocketAsyncEventArgs();
@@ -134,7 +139,7 @@ public class EventDrivenSocketServer
             // Send response back to the client
             StartSend(client, response);
         }
-        else if (e.SocketError == SocketError.ConnectionReset || e.BytesTransferred == 0)
+        else if (e.SocketError == SocketError.ConnectionReset || e.BytesTransferred == 0 || IsSocketDisconnected(client.Socket))
         {
             // Handle disconnection
             Console.WriteLine($"Client {client.Id} (Session {client.SessionId}) forcefully disconnected.");
@@ -148,6 +153,19 @@ public class EventDrivenSocketServer
             client.Close();
             clients.Remove(client);
             availableIds.Enqueue(client.Id); // Reuse ID
+        }
+    }
+
+    // Helper method to check if the socket is disconnected
+    private bool IsSocketDisconnected(Socket socket)
+    {
+        try
+        {
+            return socket.Poll(1000, SelectMode.SelectRead) && socket.Available == 0;
+        }
+        catch (SocketException)
+        {
+            return true; // Assume socket is disconnected if an exception occurs
         }
     }
 
@@ -270,13 +288,17 @@ public class EventDrivenSocketServer
     public void Stop()
     {
         isRunning = false;
+
         foreach (var client in clients)
         {
             client.Close(); // Close all client connections when stopping the server
         }
+
         serverSocket.Close();
         Console.WriteLine("Server stopped.");
     }
+
+    public bool IsRunning => isRunning;
 
     public void ShowClientStatus()
     {
@@ -297,8 +319,9 @@ public class TcpServer
         server.Start();
 
         Console.WriteLine("Press ENTER to show connected clients or type 'stop' to stop the server...");
+
         string input;
-        while ((input = Console.ReadLine()) != "stop")
+        while (server.IsRunning && (input = Console.ReadLine()) != "stop")
         {
             if (string.IsNullOrEmpty(input))
             {
