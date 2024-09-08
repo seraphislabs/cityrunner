@@ -1,8 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Collections.Generic;
 using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -14,14 +14,16 @@ public class Client
     public byte[] Buffer { get; set; } = new byte[1024];
     public bool IsConnected { get; set; }
     public string ipAddress { get; set; }
-    public Guid SessionId { get; set; }  // Add a unique session identifier
+    public Guid SessionId { get; set; }
+    public DateTime LastHeartbeat { get; set; }
 
     public Client(int id, Socket socket)
     {
         Id = id;
         Socket = socket;
         IsConnected = true;
-        SessionId = Guid.NewGuid();  // Generate a new session ID
+        SessionId = Guid.NewGuid();
+        LastHeartbeat = DateTime.Now;
     }
 
     public void Close()
@@ -36,9 +38,10 @@ public class EventDrivenSocketServer
 {
     private Socket serverSocket;
     private bool isRunning;
-    private List<Client> clients = new List<Client>(); // List to store connected clients
-    private int clientIdCounter = 0; // To assign unique IDs to each client
-    private Queue<int> availableIds = new Queue<int>(); // To reuse IDs of disconnected clients
+    private List<Client> clients = new List<Client>();
+    private int clientIdCounter = 0;
+    private Queue<int> availableIds = new Queue<int>();
+    private int heartbeatTimeout = 15; // Timeout for heartbeats in seconds
 
     public EventDrivenSocketServer(string ipAddress, int port)
     {
@@ -52,17 +55,16 @@ public class EventDrivenSocketServer
     {
         isRunning = true;
         Console.WriteLine("Server started, waiting for connections...");
-
-        // Start accepting clients asynchronously
         StartAccept(null);
+
+        // Start checking for client heartbeats in a background thread
+        Thread heartbeatThread = new Thread(CheckClientHeartbeats);
+        heartbeatThread.Start();
     }
 
     private void StartAccept(SocketAsyncEventArgs acceptEventArg)
     {
-        if (!isRunning)
-        {
-            return; // Don't accept new clients if the server is stopped
-        }
+        if (!isRunning) return;
 
         if (acceptEventArg == null)
         {
@@ -90,7 +92,6 @@ public class EventDrivenSocketServer
     {
         Console.WriteLine("Client connected!");
 
-        // Assign a unique ID to the client from the available IDs or create a new one
         int clientId = availableIds.Count > 0 ? availableIds.Dequeue() : clientIdCounter++;
         Client client = new Client(clientId, e.AcceptSocket);
         client.ipAddress = e.AcceptSocket.RemoteEndPoint.ToString();
@@ -98,10 +99,8 @@ public class EventDrivenSocketServer
         clients.Add(client);
         Console.WriteLine($"Client {client.Id} added. With IP: {client.ipAddress}");
 
-        // Start receiving data from the client
         StartReceive(client);
 
-        // Accept the next client
         StartAccept(e);
     }
 
@@ -126,22 +125,19 @@ public class EventDrivenSocketServer
 
     private void ProcessReceive(SocketAsyncEventArgs e)
     {
-        Client client = e.UserToken as Client; // Retrieve the client from UserToken
+        Client client = e.UserToken as Client;
 
         if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
         {
             string receivedData = Encoding.ASCII.GetString(e.Buffer, e.Offset, e.BytesTransferred);
             Console.WriteLine($"Received from Client {client.Id}: {receivedData}");
 
-            // Process the command and get the response, passing the client as context
             string response = ProcessRpcCommand(receivedData, client);
 
-            // Send response back to the client
             StartSend(client, response);
         }
         else if (e.SocketError == SocketError.ConnectionReset || e.BytesTransferred == 0 || IsSocketDisconnected(client.Socket))
         {
-            // Handle disconnection
             Console.WriteLine($"Client {client.Id} (Session {client.SessionId}) forcefully disconnected.");
             client.Close();
             clients.Remove(client);
@@ -156,7 +152,6 @@ public class EventDrivenSocketServer
         }
     }
 
-    // Helper method to check if the socket is disconnected
     private bool IsSocketDisconnected(Socket socket)
     {
         try
@@ -165,7 +160,7 @@ public class EventDrivenSocketServer
         }
         catch (SocketException)
         {
-            return true; // Assume socket is disconnected if an exception occurs
+            return true;
         }
     }
 
@@ -195,7 +190,6 @@ public class EventDrivenSocketServer
 
         if (e.SocketError == SocketError.Success)
         {
-            // Start receiving data from the client again
             StartReceive(client);
         }
         else
@@ -204,84 +198,87 @@ public class EventDrivenSocketServer
         }
     }
 
+    // The RpcCommand processor that handles greet, heartbeat, and other commands
     private string ProcessRpcCommand(string jsonData, Client client)
     {
         try
         {
-            // Parse the incoming JSON to a JObject for dynamic handling
             JObject jsonRequest = JObject.Parse(jsonData);
-
-            // Extract the "RequestId" field
             string requestId = jsonRequest["RequestId"]?.ToString();
-
-            // Extract the "Command" field
             string command = jsonRequest["Command"]?.ToString();
 
-            // Check if the command is "greet"
             if (command == "greet")
             {
-                // Extract the parameters (assuming there is an "auth" field in the parameters)
                 string auth = jsonRequest["Parameters"]?["auth"]?.ToString();
 
-                if (!string.IsNullOrEmpty(auth))
+                RpcResponse response = new RpcResponse
                 {
-                    // Create the RpcResponse and include client information like IP, ID, and SessionId
-                    RpcResponse response = new RpcResponse
+                    Result = auth == "false" ? "false" : "true",
+                    Error = null,
+                    RequestId = requestId,
+                    Parameters = new
                     {
-                        Result = auth == "false" ? "false" : "true",
-                        Error = null,  // No error
-                        RequestId = requestId,  // Include the RequestId in the response
-                        Parameters = new
-                        {
-                            ClientId = client.Id,
-                            IpAddress = client.ipAddress,
-                            SessionId = client.SessionId
-                        }
-                    };
+                        ClientId = client.Id,
+                        IpAddress = client.ipAddress,
+                        SessionId = client.SessionId
+                    }
+                };
 
-                    // Serialize the RpcResponse back to JSON
-                    return JsonConvert.SerializeObject(response);
-                }
-                else
+                return JsonConvert.SerializeObject(response);
+            }
+            else if (command == "heartbeat")
+            {
+                client.LastHeartbeat = DateTime.Now; // Update heartbeat timestamp
+                RpcResponse response = new RpcResponse
                 {
-                    // If the auth parameter is missing or empty, return an error response
-                    RpcResponse errorResponse = new RpcResponse
-                    {
-                        Result = null,
-                        Error = "Missing 'auth' parameter in 'greet' command",
-                        RequestId = requestId,  // Include the RequestId in the error response
-                        Parameters = null
-                    };
-
-                    return JsonConvert.SerializeObject(errorResponse);
-                }
+                    Result = "ok",
+                    Error = null,
+                    RequestId = requestId,
+                    Parameters = null
+                };
+                return JsonConvert.SerializeObject(response);
             }
             else
             {
-                // Handle unknown commands with an error response
                 RpcResponse unknownCommandResponse = new RpcResponse
                 {
                     Result = null,
                     Error = $"Unknown command: {command}",
-                    RequestId = requestId,  // Include the RequestId in the error response
+                    RequestId = requestId,
                     Parameters = null
                 };
-
                 return JsonConvert.SerializeObject(unknownCommandResponse);
             }
         }
         catch (JsonException ex)
         {
-            // Handle JSON parsing errors and return an error response
             RpcResponse errorResponse = new RpcResponse
             {
                 Result = null,
                 Error = $"Invalid JSON format: {ex.Message}",
-                RequestId = null,  // No valid RequestId if JSON is invalid
+                RequestId = null,
                 Parameters = null
             };
 
             return JsonConvert.SerializeObject(errorResponse);
+        }
+    }
+
+    private void CheckClientHeartbeats()
+    {
+        while (isRunning)
+        {
+            DateTime now = DateTime.Now;
+            foreach (var client in clients.ToArray())
+            {
+                if ((now - client.LastHeartbeat).TotalSeconds > heartbeatTimeout)
+                {
+                    Console.WriteLine($"Client {client.Id} did not send heartbeat, disconnecting.");
+                    client.Close();
+                    clients.Remove(client);
+                }
+            }
+            Thread.Sleep(5000); // Check every 5 seconds
         }
     }
 
@@ -291,7 +288,7 @@ public class EventDrivenSocketServer
 
         foreach (var client in clients)
         {
-            client.Close(); // Close all client connections when stopping the server
+            client.Close();
         }
 
         serverSocket.Close();
@@ -307,29 +304,5 @@ public class EventDrivenSocketServer
         {
             Console.WriteLine($"Client {client.Id}: Connected = {client.IsConnected}");
         }
-    }
-}
-
-// Program entry point
-public class TcpServer
-{
-    public static void Main(string[] args)
-    {
-        EventDrivenSocketServer server = new EventDrivenSocketServer("0.0.0.0", 5000);
-        server.Start();
-
-        Console.WriteLine("Press ENTER to show connected clients or type 'stop' to stop the server...");
-
-        string input;
-        while (server.IsRunning && (input = Console.ReadLine()) != "stop")
-        {
-            if (string.IsNullOrEmpty(input))
-            {
-                server.ShowClientStatus(); // Show client status on ENTER
-            }
-        }
-
-        // Stop the server
-        server.Stop();
     }
 }
