@@ -1,4 +1,4 @@
-dotnet new console -0 masterserver
+dotnet new console -o masterserver
 mv master.cs masterserver/Program.cs
 cd masterserver
 dotnet build
