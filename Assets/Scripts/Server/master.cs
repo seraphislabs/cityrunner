@@ -63,7 +63,7 @@ class TcpServer
                 string message = Encoding.ASCII.GetString(buffer, 0, bytesRead);
                 Console.WriteLine($"Received: {message}");
 
-                // Send a response back to the client (echo the message)
+                // Send a response back to the client (echo the message)s
                 byte[] response = Encoding.ASCII.GetBytes("Echo: " + message);
                 stream.Write(response, 0, response.Length);
                 Console.WriteLine($"Sent: Echo: {message}");
