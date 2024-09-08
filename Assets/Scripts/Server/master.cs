@@ -4,8 +4,11 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Linq;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Collections.Concurrent;
 
 public class Client
 {
@@ -29,7 +32,11 @@ public class Client
     public void Close()
     {
         IsConnected = false;
-        Socket.Shutdown(SocketShutdown.Both);
+        try
+        {
+            Socket.Shutdown(SocketShutdown.Both);
+        }
+        catch (SocketException) { }  // Handle cases where the socket is already closed.
         Socket.Close();
     }
 }
@@ -38,9 +45,8 @@ public class EventDrivenSocketServer
 {
     private Socket serverSocket;
     private bool isRunning;
-    private List<Client> clients = new List<Client>();
+    private ConcurrentDictionary<int, Client> clients = new ConcurrentDictionary<int, Client>();
     private int clientIdCounter = 0;
-    private Queue<int> availableIds = new Queue<int>();
     private int heartbeatTimeout = 15; // Timeout for heartbeats in seconds
 
     public EventDrivenSocketServer(string ipAddress, int port)
@@ -92,15 +98,14 @@ public class EventDrivenSocketServer
     {
         Console.WriteLine("Client connected!");
 
-        int clientId = availableIds.Count > 0 ? availableIds.Dequeue() : clientIdCounter++;
+        int clientId = Interlocked.Increment(ref clientIdCounter);
         Client client = new Client(clientId, e.AcceptSocket);
         client.ipAddress = e.AcceptSocket.RemoteEndPoint.ToString();
 
-        clients.Add(client);
+        clients.TryAdd(client.Id, client);
         Console.WriteLine($"Client {client.Id} added. With IP: {client.ipAddress}");
 
         StartReceive(client);
-
         StartAccept(e);
     }
 
@@ -146,15 +151,13 @@ public class EventDrivenSocketServer
         {
             Console.WriteLine($"Client {client.Id} (Session {client.SessionId}) forcefully disconnected.");
             client.Close();
-            clients.Remove(client);
-            availableIds.Enqueue(client.Id); // Reuse ID
+            clients.TryRemove(client.Id, out _); // Remove client safely
         }
         else
         {
             Console.WriteLine($"Error with Client {client.Id}: {e.SocketError}");
             client.Close();
-            clients.Remove(client);
-            availableIds.Enqueue(client.Id); // Reuse ID
+            clients.TryRemove(client.Id, out _); // Remove client safely
         }
     }
 
@@ -280,17 +283,34 @@ public class EventDrivenSocketServer
         while (isRunning)
         {
             DateTime now = DateTime.Now;
-            foreach (var client in clients.ToArray())
+
+            // Partition clients for parallel processing
+            int numChunks = Environment.ProcessorCount;  // Number of threads based on available CPU cores
+            int chunkSize = clients.Count / numChunks + 1;
+            
+            List<Task> tasks = new List<Task>();
+
+            var clientList = clients.Values.ToList();  // Snapshot of clients at the moment
+
+            for (int i = 0; i < numChunks; i++)
             {
-                if ((now - client.LastHeartbeat).TotalSeconds > heartbeatTimeout)
+                var chunk = clientList.Skip(i * chunkSize).Take(chunkSize).ToList();
+                tasks.Add(Task.Run(() =>
                 {
-                    Console.WriteLine($"Client {client.Id} did not send heartbeat, disconnecting.");
-                    client.Close();
-                    clients.Remove(client);
-                    availableIds.Enqueue(client.Id); // Reuse ID
-                }
+                    foreach (var client in chunk)
+                    {
+                        if ((now - client.LastHeartbeat).TotalSeconds > heartbeatTimeout)
+                        {
+                            Console.WriteLine($"Client {client.Id} did not send heartbeat, disconnecting.");
+                            client.Close();
+                            clients.TryRemove(client.Id, out _);
+                        }
+                    }
+                }));
             }
-            Thread.Sleep(5000); // Check every 5 seconds
+
+            Task.WaitAll(tasks.ToArray());  // Wait for all tasks to finish
+            Thread.Sleep(5000);  // Check every 5 seconds
         }
     }
 
@@ -298,7 +318,7 @@ public class EventDrivenSocketServer
     {
         isRunning = false;
 
-        foreach (var client in clients)
+        foreach (var client in clients.Values)
         {
             client.Close();
         }
@@ -312,7 +332,7 @@ public class EventDrivenSocketServer
     public void ShowClientStatus()
     {
         Console.WriteLine("Connected Clients:");
-        foreach (var client in clients)
+        foreach (var client in clients.Values)
         {
             Console.WriteLine($"Client {client.Id}: Connected = {client.IsConnected}");
         }
