@@ -18,7 +18,7 @@ public class NetworkSocketManager : MonoBehaviour
     private SocketAsyncEventArgs sendEventArgs;    // Event args for sending data
     private SocketAsyncEventArgs receiveEventArgs; // Event args for receiving data
 
-    private float heartbeatInterval = 5f; // Send heartbeat every 5 seconds
+    private float heartbeatInterval = 10f; // Send heartbeat every 5 seconds
     private float lastHeartbeatTime;
 
     // Dictionary to hold callbacks and their expiration time (timeout)

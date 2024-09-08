@@ -306,3 +306,25 @@ public class EventDrivenSocketServer
         }
     }
 }
+
+public class TcpServer
+{
+    public static void Main(string[] args)
+    {
+        EventDrivenSocketServer server = new EventDrivenSocketServer("0.0.0.0", 5000);
+        server.Start();
+
+        Console.WriteLine("Press ENTER to show connected clients or type 'stop' to stop the server...");
+        string input = "";  // Initialize the input variable to avoid the unassigned variable error
+        while (server.IsRunning && (input = Console.ReadLine()) != "stop")
+        {
+            if (string.IsNullOrEmpty(input))
+            {
+                server.ShowClientStatus(); // Show client status on ENTER
+            }
+        }
+
+        // Stop the server
+        server.Stop();
+    }
+}
