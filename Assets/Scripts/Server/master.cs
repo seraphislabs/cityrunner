@@ -33,10 +33,12 @@ public class EventDrivenSocketServer
     private bool isRunning;
     private List<Client> clients = new List<Client>(); // List to store connected clients
     private int clientIdCounter = 0; // To assign unique IDs to each client
+    private Queue<int> availableIds = new Queue<int>(); // To reuse IDs of disconnected clients
 
     public EventDrivenSocketServer(string ipAddress, int port)
     {
         serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        serverSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
         serverSocket.Bind(new IPEndPoint(IPAddress.Parse(ipAddress), port));
         serverSocket.Listen(100); // Backlog of 100
     }
@@ -78,8 +80,10 @@ public class EventDrivenSocketServer
     {
         Console.WriteLine("Client connected!");
 
-        // Assign a unique ID to the client and add it to the client list
-        Client client = new Client(clientIdCounter++, e.AcceptSocket);
+        // Assign a unique ID to the client from the available IDs or create a new one
+        int clientId = availableIds.Count > 0 ? availableIds.Dequeue() : clientIdCounter++;
+        Client client = new Client(clientId, e.AcceptSocket);
+
         clients.Add(client);
         Console.WriteLine($"Client {client.Id} added. With IP: {client.Socket.RemoteEndPoint}");
 
@@ -124,11 +128,24 @@ public class EventDrivenSocketServer
             // Send response back to the client
             StartSend(client, response);
         }
-        else
+        else if (e.SocketError == SocketError.ConnectionReset || e.BytesTransferred == 0)
         {
-            Console.WriteLine($"Client {client.Id} disconnected.");
+            // This means the client forcefully disconnected or disconnected gracefully
+            Console.WriteLine($"Client {client.Id} forcefully disconnected.");
             client.Close();
             clients.Remove(client);
+
+            // Add the disconnected client's ID back to the available ID queue
+            availableIds.Enqueue(client.Id);
+        }
+        else
+        {
+            Console.WriteLine($"Error with Client {client.Id}: {e.SocketError}");
+            client.Close();
+            clients.Remove(client);
+
+            // Add the disconnected client's ID back to the available ID queue
+            availableIds.Enqueue(client.Id);
         }
     }
 
