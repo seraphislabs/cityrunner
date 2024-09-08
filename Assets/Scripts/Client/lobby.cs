@@ -66,7 +66,7 @@ public class Lobby : MonoBehaviour
     {
         Debug.Log("Received RPC response from server.");
 
-        // Schedule the UI update to happen on the main thread
+        /*// Schedule the UI update to happen on the main thread
         MainThreadDispatcher.Enqueue(() =>
         {
             if (!string.IsNullOrEmpty(response.Error))
@@ -85,7 +85,7 @@ public class Lobby : MonoBehaviour
                     messageLabel.text = $"Server Response: {response.Result}";
                 }
             }
-        });
+        });*/
     }
 
     void Update()

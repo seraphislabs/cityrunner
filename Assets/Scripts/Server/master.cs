@@ -19,6 +19,7 @@ public class Client
     public string ipAddress { get; set; }
     public Guid SessionId { get; set; }
     public DateTime LastHeartbeat { get; set; }
+    public bool handshakeCompleted { get; set; }
 
     public Client(int id, Socket socket)
     {
@@ -27,6 +28,7 @@ public class Client
         IsConnected = true;
         SessionId = Guid.NewGuid();
         LastHeartbeat = DateTime.Now;
+        handshakeCompleted = false;
     }
 
     public void Close()
@@ -242,6 +244,7 @@ public class EventDrivenSocketServer
             if (command == "greet")
             {
                 string auth = jsonRequest["Parameters"]?["auth"]?.ToString();
+                client.handshakeCompleted = true;
 
                 RpcResponse response = new RpcResponse
                 {
