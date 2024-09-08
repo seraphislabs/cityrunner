@@ -127,6 +127,12 @@ public class EventDrivenSocketServer
     {
         Client client = e.UserToken as Client;
 
+        if (client == null || client.Socket == null || IsSocketDisconnected(client.Socket))
+        {
+            // Socket is already disconnected, avoid further actions
+            return;
+        }
+
         if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
         {
             string receivedData = Encoding.ASCII.GetString(e.Buffer, e.Offset, e.BytesTransferred);
@@ -158,9 +164,14 @@ public class EventDrivenSocketServer
         {
             return socket.Poll(1000, SelectMode.SelectRead) && socket.Available == 0;
         }
+        catch (ObjectDisposedException)
+        {
+            // If the socket is already disposed, we consider it disconnected
+            return true;
+        }
         catch (SocketException)
         {
-            return true;
+            return true; // Assume socket is disconnected if an exception occurs
         }
     }
 
