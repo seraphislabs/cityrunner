@@ -24,14 +24,32 @@ public class Lobby : MonoBehaviour
             // Subscribe to the OnMessageReceived event
             networkSocketManager.OnMessageReceived += OnMessageReceived;
 
-            // Example: Send an RPC request when the game starts
+            // Example: Send an RPC request when the game starts with a timeout and callback
             var rpcRequest = new RpcRequest
             {
                 Command = "greet",
                 Parameters = new { auth = false }
             };
 
-            networkSocketManager.SendRpc(rpcRequest);
+            networkSocketManager.SendRpc(rpcRequest, response =>
+            {
+                if (!string.IsNullOrEmpty(response.Error))
+                {
+                    Debug.Log($"Greet RPC Error: {response.Error}");
+                    if (messageLabel != null)
+                    {
+                        messageLabel.text = $"Greet RPC Error: {response.Error}";
+                    }
+                }
+                else
+                {
+                    Debug.Log($"Greet RPC Result: {response.Result}");
+                    if (messageLabel != null)
+                    {
+                        messageLabel.text = $"Server Response: {response.Result}";
+                    }
+                }
+            }, 10f);  // Timeout of 10 seconds
         }
         catch (Exception e)
         {
@@ -53,7 +71,7 @@ public class Lobby : MonoBehaviour
         {
             if (!string.IsNullOrEmpty(response.Error))
             {
-                Debug.LogError($"RPC Error: {response.Error}");
+                Debug.Log($"RPC Error: {response.Error}");
                 if (messageLabel != null)
                 {
                     messageLabel.text = $"RPC Error: {response.Error}";
@@ -81,7 +99,17 @@ public class Lobby : MonoBehaviour
                 Parameters = new { a = 5, b = 10 }
             };
 
-            networkSocketManager.SendRpc(rpcRequest);
+            networkSocketManager.SendRpc(rpcRequest, response =>
+            {
+                if (!string.IsNullOrEmpty(response.Error))
+                {
+                    Debug.Log($"Add RPC Error: {response.Error}");
+                }
+                else
+                {
+                    Debug.Log($"Add RPC Result: {response.Result}");
+                }
+            }, 5f);  // Timeout of 5 seconds
         }
     }
 

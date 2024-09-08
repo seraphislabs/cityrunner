@@ -205,17 +205,33 @@ public class EventDrivenSocketServer
                 if (!string.IsNullOrEmpty(auth))
                 {
                     // Create the RpcResponse and include client information like IP, ID, and SessionId
-                    RpcResponse response = new RpcResponse
-                    {
-                        Result = $"You have connected with auth: {auth}, Your ID is {client.Id}, your IP is {client.ipAddress}, and your session ID is {client.SessionId}.",
-                        Error = null,  // No error
-                        Parameters = new
+                    RpcResponse response = new RpcResponse();
+                    if (auth == "false") {
+                        response = new RpcResponse
                         {
-                            ClientId = client.Id,
-                            IpAddress = client.ipAddress,
-                            SessionId = client.SessionId
-                        }
-                    };
+                            Result = "false",
+                            Error = null,  // No error
+                            Parameters = new
+                            {
+                                ClientId = client.Id,
+                                IpAddress = client.ipAddress,
+                                SessionId = client.SessionId
+                            }
+                        };
+                    }
+                    else {
+                        response = new RpcResponse
+                        {
+                            Result = "true",
+                            Error = null,  // No error
+                            Parameters = new
+                            {
+                                ClientId = client.Id,
+                                IpAddress = client.ipAddress,
+                                SessionId = client.SessionId
+                            }
+                        };
+                    }
 
                     // Serialize the RpcResponse back to JSON
                     return JsonConvert.SerializeObject(response);
