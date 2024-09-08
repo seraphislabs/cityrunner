@@ -63,6 +63,7 @@ public class EventDrivenSocketServer
     public void Start()
     {
         isRunning = true;
+        Console.WriteLine("-----------------------------------");
         Console.WriteLine("**** City Runner Master Server ****");
         Console.WriteLine("****    Llama Game Factory     ****");
         Console.WriteLine("-----------------------------------");
@@ -246,6 +247,7 @@ public class EventDrivenSocketServer
             {
                 string auth = jsonRequest["Parameters"]?["auth"]?.ToString();
                 client.handshakeCompleted = true;
+                Console.WriteLine($"|Client| Client[{client.Id}] Handshake Completed | IP: {client.ipAddress}");
 
                 RpcResponse response = new RpcResponse
                 {
