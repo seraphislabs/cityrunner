@@ -63,7 +63,11 @@ public class EventDrivenSocketServer
     public void Start()
     {
         isRunning = true;
-        Console.WriteLine("Server started, waiting for connections...");
+        Console.WriteLine("**** City Runner Master Server ****");
+        Console.WriteLine("****    Llama Game Factory     ****");
+        Console.WriteLine("|Menu| Commands: stop");
+        Console.WriteLine("-----------------------------------");
+        Console.WriteLine("|Server| Server Initialized.");
         StartAccept(null);
 
         // Start checking for client heartbeats in a background thread
@@ -72,7 +76,7 @@ public class EventDrivenSocketServer
     }
 
     private void RemoveClient(Client client, string reason) {
-        Console.WriteLine($"Client {client.Id} disconnected: {reason}");
+        Console.WriteLine($"|Network| Client[{client.Id}] disconnected: {reason}");
         client.Close();
         if (clients.TryRemove(client.Id, out _))
         {
@@ -124,7 +128,7 @@ public class EventDrivenSocketServer
         client.ipAddress = e.AcceptSocket.RemoteEndPoint.ToString();
 
         clients.TryAdd(client.Id, client);
-        Console.WriteLine($"+ [{client.Id}]Client Connected | IP: {client.ipAddress}");
+        Console.WriteLine($"|Network| Client[{client.Id}] Connected | IP: {client.ipAddress}");
 
         StartReceive(client);
         StartAccept(e);
@@ -162,7 +166,6 @@ public class EventDrivenSocketServer
         if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
         {
             string receivedData = Encoding.ASCII.GetString(e.Buffer, e.Offset, e.BytesTransferred);
-            Console.WriteLine($"Received from Client {client.Id}: {receivedData}");
 
             string response = ProcessRpcCommand(receivedData, client);
 
@@ -347,7 +350,7 @@ public class EventDrivenSocketServer
         }
 
         serverSocket.Close();
-        Console.WriteLine("Server stopped.");
+        Console.WriteLine("|Server| Server stopped.");
     }
 
     public bool IsRunning => isRunning;
@@ -368,8 +371,6 @@ public class TcpServer
     {
         EventDrivenSocketServer server = new EventDrivenSocketServer("0.0.0.0", 5000);
         server.Start();
-
-        Console.WriteLine("*** Commands: [stop] ***");
         string input = "";  // Initialize the input variable to avoid the unassigned variable error
         while (server.IsRunning && (input = Console.ReadLine()) != "stop")
         {
